@@ -638,6 +638,8 @@ void CodeGenTileLangAscend::VisitExpr_(const CallNode *op, std::ostream &os) {
     PrintOpCall(op, "AscendC::SyncAll<false>", {0, 0}, {0, 0});
   } else if (op->op.same_as(tl::ascend_gemm_v0())) {
     GemmOpCodegen(op);
+  } else if (op->op.same_as(tl::ascend_gemm_v0_fixp())) {
+    GemmFixpOpCodegen(op);
   } else if (op->op.same_as(tl::ascend_printf())) {
     PrintfOpCodegen(op, "AscendC::PRINTF");
   } else if (op->op.same_as(tl::ascend_dump_tensor())) {
@@ -2267,6 +2269,35 @@ void CodeGenTileLangAscend::GemmOpCodegen(const CallNode *op) {
                << ");\n";
 }
 
+void CodeGenTileLangAscend::GemmFixpOpCodegen(const CallNode *op) {
+  // args: [0]=template name, [1]=A, [2]=B, [3]=C (L0C), [4]=dst (GM), [5]=init,
+  // [6]=k_actual. Same shape as GemmOpCodegen plus the GM destination operand;
+  // the per-N-tile fixpipe lives inside the template.
+  std::string op_name =
+      "tl::ascend::" + Downcast<StringImm>(op->args[0])->value;
+
+  this->PrintIndent();
+  auto a_var = op->args[1].as<CallNode>()->args[1].as<VarNode>();
+  auto b_var = op->args[2].as<CallNode>()->args[1].as<VarNode>();
+  auto c_var = op->args[3].as<CallNode>()->args[1].as<VarNode>();
+  auto d_var = op->args[4].as<CallNode>()->args[1].as<VarNode>();
+
+  auto a_offset = PrintExpr(op->args[1].as<CallNode>()->args[2]);
+  auto b_offset = PrintExpr(op->args[2].as<CallNode>()->args[2]);
+  auto c_offset = PrintExpr(op->args[3].as<CallNode>()->args[2]);
+  auto d_offset = PrintExpr(op->args[4].as<CallNode>()->args[2]);
+
+  auto a_name = var_idmap_[a_var];
+  auto b_name = var_idmap_[b_var];
+  auto c_name = var_idmap_[c_var];
+  auto d_name = var_idmap_[d_var];
+
+  this->stream << op_name << "(" << a_name << "[" << a_offset << "], " << b_name
+               << "[" << b_offset << "], " << c_name << "[" << c_offset << "], "
+               << d_name << "[" << d_offset << "], ascend_l0a, ascend_l0b, "
+               << PrintExpr(op->args[5]) << ", " << PrintExpr(op->args[6])
+               << ");\n";
+}
 void CodeGenTileLangAscend::PrintfOpCodegen(const CallNode *op,
                                             const std::string &op_name) {
   this->PrintIndent();
